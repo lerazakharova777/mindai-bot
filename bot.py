@@ -25,18 +25,24 @@ def start(message):
     if user_id not in users:
         users[user_id] = {"requests": 0, "pro": False}
     name = message.from_user.first_name
-    bot.reply_to(message, f"Привет, {name}! Рад тебя видеть. Чем могу помочь?\n\n💬 Бесплатный лимит: 5 запросов. Если захочешь больше — есть /pro.")
+    bot.reply_to(message, f"Привет, {name}! Рад тебя видеть. Чем могу помочь?\n\n💬 Бесплатный лимит: 5 запросов.")
 
 @bot.message_handler(commands=['pro'])
 def pro(message):
-    bot.reply_to(message, "💎 Тариф PRO:\n• Безлимитные запросы\n• Длинные ответы\nЦена: 100 Stars.\n\n(Оплата будет подключена позже)")
+    bot.reply_to(message, "💎 Тариф PRO:\n• Безлимитные запросы\n• Длинные ответы\nЦена: 100 Stars.")
 
 @bot.message_handler(commands=['stats'])
 def stats(message):
     if message.from_user.id == ADMIN_ID:
-        text = f"👥 Всего пользователей: {len(users)}\n"
+        total = len(users)
+        pro_count = sum(1 for d in users.values() if d.get("pro"))
+        text = f"📊 **Статистика бота**\n\n"
+        text += f"👥 Всего пользователей: {total}\n"
+        text += f"💎 PRO: {pro_count}\n"
+        text += f"🆓 Бесплатных: {total - pro_count}\n\n"
         for uid, data in users.items():
-            text += f"ID {uid}: {data['requests']} запросов\n"
+            status = "💎 PRO" if data.get("pro") else "🆓 Free"
+            text += f"ID {uid}: {data['requests']} запросов | {status}\n"
         bot.reply_to(message, text)
     else:
         bot.reply_to(message, "Извини, это команда только для администратора. 🙏")
