@@ -1,144 +1,70 @@
-import asyncio
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart, Command
-import aiohttp
-import uuid
-import time
+import telebot
+import logging
+import os
+from gigachat import GigaChat
 
-# Токен твоего бота
-BOT_TOKEN = "8948122875:AAE5PmFoT58posjBymvMfaa9g2XQx2nEC9w"
+logging.basicConfig(level=logging.INFO)
 
-# Ключ авторизации GigaChat
-GIGACHAT_AUTH_KEY = "MDFhMTIwMGUtMDAwMC03MDhkLTgwNTEtN2VhZTM1ZTU4N2VlOmQ1OTQ0M2QyLTVkNDMtNGQwZi05YzY3LTkyYjFmMzQ2YzZlYg=="
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+GIGACHAT_API_KEY = os.environ.get("GIGACHAT_API_KEY")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+try:
+    giga = GigaChat(credentials=GIGACHAT_API_KEY, verify_ssl_certs=False, model="GigaChat-3-Pro")
+    AI_ENABLED = True
+except Exception as e:
+    print(f"Ошибка подключения GigaChat: {e}")
+    AI_ENABLED = False
 
-gigachat_token = None
-token_expires_at = 0
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+users = {}
 
-# Хранилище имен пользователей
-user_names = {}
-
-async def get_gigachat_token():
-    global gigachat_token, token_expires_at
-    if gigachat_token and time.time() < token_expires_at:
-        return gigachat_token
-    
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
-        "RqUID": str(uuid.uuid4()),
-        "Authorization": f"Basic {GIGACHAT_AUTH_KEY}"
-    }
-    data = {"scope": "GIGACHAT_API_PERS"}
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.post("https://ngw.devices.sberbank.ru:9443/api/v2/oauth", headers=headers, data=data, ssl=False) as resp:
-            if resp.status == 200:
-                result = await resp.json()
-                gigachat_token = result['access_token']
-                token_expires_at = time.time() + 1700
-                return gigachat_token
-            return None
-
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message):
+@bot.message_handler(commands=['start'])
+def start(message):
     user_id = message.from_user.id
-    if user_id not in user_names:
-        user_names[user_id] = None
-        await message.answer(
-            f"Привет! 👋 Я — Mind AI.\n\n"
-            "Давай познакомимся. Как тебя зовут?"
-        )
+    if user_id not in users:
+        users[user_id] = {"requests": 0, "pro": False}
+    bot.reply_to(message, "Привет! Я Mind AI. Напиши мне любой вопрос, и я отвечу.\nБесплатный лимит: 5 запросов.")
+
+@bot.message_handler(commands=['pro'])
+def pro(message):
+    bot.reply_to(message, "💎 Тариф PRO:\n• Безлимитные запросы\n• Длинные ответы\nЦена: 100 Stars.")
+
+@bot.message_handler(commands=['stats'])
+def stats(message):
+    if message.from_user.id == ADMIN_ID:
+        text = f"👥 Всего пользователей: {len(users)}\n"
+        for uid, data in users.items():
+            text += f"ID {uid}: {data['requests']} запросов\n"
+        bot.reply_to(message, text)
     else:
-        name = user_names[user_id]
-        await message.answer(f"С возвращением, {name}! 😊 Чем могу помочь?")
+        bot.reply_to(message, "У вас нет доступа.")
 
-@dp.message(Command("help"))
-async def cmd_help(message: types.Message):
-    await message.answer(
-        "🤖 **Что я умею:**\n\n"
-        "• Отвечаю на любые вопросы\n"
-        "• Помогаю с учёбой и идеями\n"
-        "• Пишу тексты и объясняю сложное\n"
-        "• Просто болтаю, если грустно\n\n"
-        "💎 **Команды:**\n"
-        "/start — начать общение\n"
-        "/pro — купить подписку PRO\n"
-        "/help — эта справка"
-    )
-
-@dp.message(Command("pro"))
-async def cmd_pro(message: types.Message):
-    await message.answer(
-        "💎 **Тариф PRO**\n\n"
-        "• Безлимитные запросы\n"
-        "• Длинные ответы\n\n"
-        "Цена: 100 Stars",
-        reply_markup=types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [types.InlineKeyboardButton(text="💎 Купить PRO", callback_data="buy_pro")]
-            ]
-        )
-    )
-
-@dp.callback_query(F.data == "buy_pro")
-async def process_buy_pro(callback: types.CallbackQuery):
-    await callback.message.answer("✅ Спасибо за покупку! (Это тест).")
-    await callback.answer()
-
-@dp.message(F.text)
-async def handle_message(message: types.Message):
+@bot.message_handler(func=lambda message: True)
+def ask_ai(message):
     user_id = message.from_user.id
-    text = message.text
+    if user_id not in users:
+        users[user_id] = {"requests": 0, "pro": False}
 
-    # Если имя еще не сохранено — сохраняем его
-    if user_id not in user_names or user_names[user_id] is None:
-        user_names[user_id] = text
-        await message.answer(f"Очень приятно, {text}! 😊 Теперь я запомнил твоё имя. Спрашивай что угодно!")
+    if not users[user_id]["pro"] and users[user_id]["requests"] >= 5:
+        bot.reply_to(message, "❌ Лимит исчерпан. Купите PRO (/pro).")
         return
 
-    name = user_names[user_id]
-    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
-
-    token = await get_gigachat_token()
-    if not token:
-        await message.answer("Ошибка авторизации. Проверь ключ GigaChat.")
+    if not AI_ENABLED:
+        bot.reply_to(message, "⚠️ ИИ временно недоступен.")
         return
 
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
+    bot.send_chat_action(message.chat.id, 'typing')
 
-    # Системный промпт: бот общается как близкий друг
-    system_prompt = (
-        f"Ты — близкий друг пользователя по имени {name}. "
-        "Общайся тепло, искренне и с заботой. Обращайся по имени, используй эмодзи, "
-        "поддерживай в трудную минуту, радуйся успехам. Отвечай кратко, но по-дружески."
-    )
-
-    data = {
-        "model": "GigaChat","messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text}
-        ]
-    }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post("https://gigachat.devices.sberbank.ru/api/v1/chat/completions", headers=headers, json=data, ssl=False) as resp:
-            if resp.status == 200:
-                result = await resp.json()
-                answer = result['choices'][0]['message']['content']
-                await message.answer(answer)
-            else:
-                await message.answer(f"Ошибка GigaChat: {resp.status}")
-
-async def main():
-    print("Бот запущен и готов к работе...")
-    await dp.start_polling(bot)
+    try:
+        response = giga.chat(message.text)
+        answer = response.choices[0].message.content
+        users[user_id]["requests"] += 1
+        bot.reply_to(message, answer)
+    except Exception as e:
+        logging.error(f"Ошибка ИИ: {e}")
+        bot.reply_to(message, "⚠️ Ошибка при запросе к ИИ.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    print("Бот запущен...")
+    bot.polling(none_stop=True)
