@@ -31,7 +31,7 @@ def start(message):
 def pro(message):
     bot.reply_to(message, "💎 Тариф PRO:\n• Безлимитные запросы\n• Длинные ответы\nЦена: 100 Stars.")
 
-@bot.message_handler(commands=['stars'])
+@bot.message_handler(commands=['stats'])
 def stats(message):
     if message.from_user.id == ADMIN_ID:
         total = len(users)
