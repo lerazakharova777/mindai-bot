@@ -90,7 +90,7 @@ def pre_checkout(query: PreCheckoutQuery):
 def payment_success(message):
     uid = message.from_user.id
     update_user(uid, pro=True)
-    bot.reply_to(message, "🎉 Спасибо! PRO активирован. Теперь безлимит!", reply_markup=main_keyboard())
+    bot.reply_to(message, "🎉 Спасибо! PRO активирован. Теперь у тебя безлимит!", reply_markup=main_keyboard())
 
 @bot.message_handler(commands=['stats'])
 def stats(message):
@@ -101,11 +101,11 @@ def stats(message):
         pro_count = cursor.fetchone()[0]
         bot.reply_to(message, f"📊 Пользователей: {total}\n💎 PRO: {pro_count}")
     else:
-        bot.reply_to(message, "Только для админа.")
+        bot.reply_to(message, "Упс, это только для админа.")
 
 @bot.message_handler(func=lambda m: m.text == "💬 Вопрос")
 def btn_q(message):
-    bot.reply_to(message, "Напиши вопрос!")
+    bot.reply_to(message, "Задай вопрос!")
 
 @bot.message_handler(func=lambda m: m.text == "💎 PRO")
 def btn_pro(message):
