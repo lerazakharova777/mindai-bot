@@ -24,7 +24,7 @@ def main_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(KeyboardButton("💬 Вопрос"))
     kb.add(KeyboardButton("💎 PRO"))
-    kb.add(KeyboardButton("📊 Стата"))
+    kb.add(KeyboardButton("📊 Стататистика"))
     return kb
 
 @bot.message_handler(commands=['start'])
@@ -58,7 +58,7 @@ def btn_q(message):
 def btn_pro(message):
     pro(message)
 
-@bot.message_handler(func=lambda m: m.text == "📊 Стата")
+@bot.message_handler(func=lambda m: m.text == "📊 Статистика")
 def btn_stats(message):
     stats(message)
 
