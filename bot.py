@@ -57,7 +57,7 @@ def start(message):
     uid = message.from_user.id
     get_user(uid)
     name = message.from_user.first_name
-    bot.reply_to(message, f"Привет, {name}! 👋\nЯ Mind AI. Отвечу на любые вопросы.\n\n💬 Лимит: 5 запросов.", reply_markup=main_keyboard())
+    bot.reply_to(message, f"Привет, {name}! 👋\nЯ Bro AI. Отвечу на любые вопросы.\n\n💬 Лимит: 5 запросов.", reply_markup=main_keyboard())
 
 @bot.message_handler(commands=['help'])
 def help_cmd(message):
@@ -73,8 +73,8 @@ def pro(message):
     prices = [LabeledPrice(label="PRO-подписка", amount=100)]
     bot.send_invoice(
         chat_id=message.chat.id,
-        title="PRO-подписка Mind AI",
-        description="Безлимитные запросы и длинные ответы.",
+        title="PRO-подписка Bro AI",
+        description="Безлимитные запросы и длинные ответы и приоритет.",
         invoice_payload="pro_purchase",
         provider_token="",
         currency="XTR",
