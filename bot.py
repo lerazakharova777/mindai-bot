@@ -27,6 +27,10 @@ def start(message):
     name = message.from_user.first_name
     bot.reply_to(message, f"Привет, {name}! Рад тебя видеть. Чем могу помочь?\n\n💬 Бесплатный лимит: 5 запросов.")
 
+@bot.message_handler(commands=['help'])
+def help_cmd(message):
+    bot.reply_to(message, "Доступные команды:\n/start — начать\n/pro — купить PRO\n/stats — статистика (для админа)")
+
 @bot.message_handler(commands=['pro'])
 def pro(message):
     bot.reply_to(message, "💎 Тариф PRO:\n• Безлимитные запросы\n• Длинные ответы\nЦена: 100 Stars.")
