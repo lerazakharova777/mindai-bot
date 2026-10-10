@@ -115,7 +115,8 @@ def btn_pro(message):
 def btn_stats(message):
     stats(message)
 
-@bot.message_handler(func=lambda message: True)def ask_ai(message):
+@bot.message_handler(func=lambda message: True)
+def ask_ai(message):
     uid = message.from_user.id
     user = get_user(uid)
     name = message.from_user.first_name
