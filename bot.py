@@ -93,7 +93,8 @@ def buy_pro_callback(call):
         return
 
     amount = 100 if call.data == "buy_pro_1" else (500 if call.data == "buy_pro_6" else 1000)
-    label = "PRO на месяц" if call.data == "buy_pro_1" else ("PRO на полгода" if call.data == "buy_pro_6" else "PRO навсегда")prices = [LabeledPrice(label=label, amount=amount)]
+    label = "PRO на месяц" if call.data == "buy_pro_1" else ("PRO на полгода" if call.data == "buy_pro_6" else "PRO 
+    навсегда")prices = [LabeledPrice(label=label, amount=amount)]
     bot.send_invoice(
         chat_id=call.message.chat.id,
         title=label,
