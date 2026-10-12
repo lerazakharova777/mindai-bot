@@ -108,7 +108,8 @@ def buy_pro_callback(call):
     )
     bot.answer_callback_query(call.id)
 
-@bot.pre_checkout_query_handler(func=lambda query: True)def pre_checkout(query: PreCheckoutQuery):
+@bot.pre_checkout_query_handler(func=lambda query: True)
+def pre_checkout(query: PreCheckoutQuery):
     bot.answer_pre_checkout_query(query.id, ok=True)
 
 @bot.message_handler(content_types=['successful_payment'])
