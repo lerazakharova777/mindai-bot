@@ -293,9 +293,9 @@ def ask_ai(message):
         response = giga.chat({"messages": messages})
         answer = response.choices[0].message.content
         history[uid].append({"role": "assistant", "content": answer})
-        new_req = user["requests"] + 1update_user(uid, requests=new_req)
-        bot.reply_to(message, f"{answer}\n\n---\n💬 Запрос №{new_req}")
-    except Exception as e:
+        new_req = user["requests"] + 1
+        update_user(uid, requests=new_req)
+        except Exception as e:
         logging.error(f"Ошибка ИИ: {e}")
         bot.reply_to(message, "Ошибка. Попробуй ещё раз.")
 
