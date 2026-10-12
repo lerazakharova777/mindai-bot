@@ -2,12 +2,8 @@ import telebot
 import logging
 import os
 import sqlite3
-import requests
-import re
 from gigachat import GigaChat
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
-from gtts import gTTS
-import speech_recognition as sr
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,31 +21,29 @@ except Exception as e:
 conn = sqlite3.connect('users.db', check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('''CREATE TABLE IF NOT EXISTS users
-                  (user_id INTEGER PRIMARY KEY, requests INTEGER, pro INTEGER, pro_until TEXT, joined_at TEXT, username TEXT)''')
+                  (user_id INTEGER PRIMARY KEY, requests INTEGER, pro INTEGER, joined_at TEXT, username TEXT)''')
 conn.commit()
 
 def get_user(user_id):
-    cursor.execute("SELECT requests, pro, pro_until, joined_at, username FROM users WHERE user_id=?", (user_id,))
+    cursor.execute("SELECT requests, pro, joined_at, username FROM users WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
     if row:
-        return {"requests": row[0], "pro": bool(row[1]), "pro_until": row[2], "joined_at": row[3], "username": row[4]}
+        return {"requests": row[0], "pro": bool(row[1]), "joined_at": row[2], "username": row[3]}
     return None
 
 def register_user(user_id, username):
-    cursor.execute("INSERT OR IGNORE INTO users (user_id, requests, pro, pro_until, joined_at, username) VALUES (?, 0, 0, NULL, datetime('now'), ?)", (user_id, username))
+    cursor.execute("INSERT OR IGNORE INTO users (user_id, requests, pro, joined_at, username) VALUES (?, 0, 0, datetime('now'), ?)", (user_id, username))
     conn.commit()
 
-def update_user(user_id, requests=None, pro=None, pro_until=None):
+def update_user(user_id, requests=None, pro=None):
     user = get_user(user_id)
     if user:
         if requests is not None:
             user["requests"] = requests
         if pro is not None:
             user["pro"] = pro
-        if pro_until is not None:
-            user["pro_until"] = pro_until
-        cursor.execute("UPDATE users SET requests=?, pro=?, pro_until=? WHERE user_id=?",
-                       (user["requests"], int(user["pro"]), user["pro_until"], user_id))
+        cursor.execute("UPDATE users SET requests=?, pro=? WHERE user_id=?",
+                       (user["requests"], int(user["pro"]), user_id))
         conn.commit()
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
@@ -57,8 +51,7 @@ history = {}
 
 def main_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("💬 Вопрос"), KeyboardButton("🎨 Нарисовать"))
-    kb.add(KeyboardButton("💎 PRO"), KeyboardButton("🎤 Голос"))
+    kb.add(KeyboardButton("💬 Вопрос"), KeyboardButton("💎 PRO"))
     kb.add(KeyboardButton("📊 Статистика"))
     return kb
 
@@ -78,7 +71,7 @@ def start(message):
 
 @bot.message_handler(commands=['help'])
 def help_cmd(message):
-    bot.reply_to(message, "❓ Помощь:\n\n• Напиши вопрос — я отвечу.\n• Нажми «🎨 Нарисовать» для картинки.\n• Нажми «🎤 Голос» для голосового режима.\n• 5 запросов бесплатно.\n• /pro — купить PRO.", reply_markup=main_keyboard())
+    bot.reply_to(message, "❓ Помощь:\n\n• Напиши вопрос — я отвечу.\n• 5 запросов бесплатно.\n• /pro — купить PRO.", reply_markup=main_keyboard())
 
 @bot.message_handler(commands=['pro'])
 def pro(message):
@@ -92,13 +85,21 @@ def buy_pro_callback(call):
         bot.answer_callback_query(call.id, "У тебя уже есть PRO! ❤️")
         return
 
-    amount = 100 if call.data == "buy_pro_1" else (500 if call.data == "buy_pro_6" else 1000)
-    label = "PRO на месяц" if call.data == "buy_pro_1" else ("PRO на полгода" if call.data == "buy_pro_6" else "PRO 
-    навсегда")prices = [LabeledPrice(label=label, amount=amount)]
+    if call.data == "buy_pro_1":
+        amount = 100
+        label = "PRO на месяц"
+    elif call.data == "buy_pro_6":
+        amount = 500
+        label = "PRO на полгода"
+    else:
+        amount = 1000
+        label = "PRO навсегда"
+
+    prices = [LabeledPrice(label=label, amount=amount)]
     bot.send_invoice(
         chat_id=call.message.chat.id,
         title=label,
-        description="Безлимитные запросы, длинные ответы и генерация картинок.",
+        description="Безлимитные запросы и длинные ответы.",
         invoice_payload=call.data,
         provider_token="",
         currency="XTR",
@@ -107,8 +108,7 @@ def buy_pro_callback(call):
     )
     bot.answer_callback_query(call.id)
 
-@bot.pre_checkout_query_handler(func=lambda query: True)
-def pre_checkout(query: PreCheckoutQuery):
+@bot.pre_checkout_query_handler(func=lambda query: True)def pre_checkout(query: PreCheckoutQuery):
     bot.answer_pre_checkout_query(query.id, ok=True)
 
 @bot.message_handler(content_types=['successful_payment'])
@@ -128,8 +128,8 @@ def stats(message):
         total_req = cursor.fetchone()[0] or 0
         cursor.execute("SELECT COUNT(*) FROM users WHERE joined_at > datetime('now', '-1 day')")
         today = cursor.fetchone()[0]
-        
-        text = f"📊 **Полная статистика**\n\n"
+
+        text = f"📊 **Статистика**\n\n"
         text += f"👥 Пользователей: {total}\n"
         text += f"💎 PRO: {pro_count}\n"
         text += f"🆓 Бесплатных: {total - pro_count}\n"
@@ -139,7 +139,7 @@ def stats(message):
         cursor.execute("SELECT username, requests FROM users ORDER BY requests DESC LIMIT 5")
         for row in cursor.fetchall():
             text += f"• {row[0] or 'Аноним'}: {row[1]}\n"
-        
+
         bot.reply_to(message, text)
     else:
         bot.reply_to(message, "Только для админа.")
@@ -147,14 +147,6 @@ def stats(message):
 @bot.message_handler(func=lambda m: m.text == "💬 Вопрос")
 def btn_q(message):
     bot.reply_to(message, "Напиши вопрос!")
-
-@bot.message_handler(func=lambda m: m.text == "🎨 Нарисовать")
-def btn_draw(message):
-    bot.reply_to(message, "Напиши, что нарисовать (например: 'кот в космосе').")
-
-@bot.message_handler(func=lambda m: m.text == "🎤 Голос")
-def btn_voice(message):
-    bot.reply_to(message, "Голосовой режим включен. Отправь голосовое сообщение, и я отвечу голосом.")
 
 @bot.message_handler(func=lambda m: m.text == "💎 PRO")
 def btn_pro(message):
@@ -164,48 +156,9 @@ def btn_pro(message):
 def btn_stats(message):
     stats(message)
 
-@bot.message_handler(content_types=['voice'])
-def handle_voice(message):
-    uid = message.from_user.id
-    user = get_user(uid)
-    if not user:
-        register_user(uid, message.from_user.username)
-        user = get_user(uid)
-
-    if not user["pro"] and user["requests"] >= 5:
-        bot.reply_to(message, "Лимит исчерпан. Купи /pro!")
-        return
-
-    try:
-        file_info = bot.get_file(message.voice.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        with open("voice.ogg", "wb") as f:
-            f.write(downloaded_file)
-
-        r = sr.Recognizer()
-        with sr.AudioFile("voice.ogg") as source:
-            audio = r.record(source)
-        text = r.recognize_google(audio, language="ru-RU")
-
-        system_prompt = "Ты — дружелюбный помощник Bro AI. Отвечай на русском. Сегодня 2026 год. Используй рубли (₽)."
-        messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
-        response = giga.chat({"messages": messages})
-        answer = response.choices[0].message.content
-
-        tts = gTTS(answer, lang='ru')
-        tts.save("answer.mp3")
-        with open("answer.mp3", "rb") as f:
-            bot.send_voice(message.chat.id, f)
-
-        update_user(uid, requests=user["requests"] + 1)
-    except Exception as e:logging.error(f"Ошибка голоса: {e}")
-        bot.reply_to(message, "Не удалось распознать голос. Попробуй текстом.")
-
 @bot.message_handler(func=lambda message: True)
 def ask_ai(message):
     uid = message.from_user.id
-    text = message.text.lower()
-
     user = get_user(uid)
     if not user:
         register_user(uid, message.from_user.username)
@@ -217,24 +170,6 @@ def ask_ai(message):
 
     if not AI_ENABLED:
         bot.reply_to(message, "ИИ недоступен.")
-        return
-
-    if "нарисовать" in text or "нарисуй" in text or text.startswith("нарисуй"):
-        bot.send_chat_action(message.chat.id, 'upload_photo')
-        try:
-            response = giga.chat(f"Сгенерируй изображение: {message.text}")
-            answer = response.choices[0].message.content
-            img_match = re.search(r"<img src=\"([^\"]+)\"", answer)
-            if img_match:
-                img_url = img_match.group(1)
-                bot.send_photo(message.chat.id, img_url)
-            else:
-                bot.reply_to(message, answer)
-        except Exception as e:
-            logging.error(f"Ошибка картинки: {e}")
-            bot.reply_to(message, "Не удалось сгенерировать картинку.")
-        new_req = user["requests"] + 1
-        update_user(uid, requests=new_req)
         return
 
     bot.send_chat_action(message.chat.id, 'typing')
@@ -267,5 +202,5 @@ def ask_ai(message):
         bot.reply_to(message, "Ошибка. Попробуй ещё раз.")
 
 if __name__ == "__main__":
-    print("Бот запущен... отправлен")
+    print("Бот запущен...")
     bot.polling(none_stop=True)
