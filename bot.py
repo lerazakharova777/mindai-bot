@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 from gigachat import GigaChat
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton, LabeledPrice, PreCheckoutQuery
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
 
 logging.basicConfig(level=logging.INFO)
 
@@ -18,40 +18,52 @@ except Exception as e:
     print(f"Ошибка GigaChat: {e}")
     AI_ENABLED = False
 
+# --- БАЗА ДАННЫХ ---
 conn = sqlite3.connect('users.db', check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('''CREATE TABLE IF NOT EXISTS users
-                  (user_id INTEGER PRIMARY KEY, requests INTEGER, pro INTEGER)''')
+                  (user_id INTEGER PRIMARY KEY, requests INTEGER, pro INTEGER, pro_until TEXT)''')
 conn.commit()
 
 def get_user(user_id):
-    cursor.execute("SELECT requests, pro FROM users WHERE user_id=?", (user_id,))
+    cursor.execute("SELECT requests, pro, pro_until FROM users WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
     if row:
-        return {"requests": row[0], "pro": bool(row[1])}
-    cursor.execute("INSERT INTO users VALUES (?, 0, 0)", (user_id,))
+        return {"requests": row[0], "pro": bool(row[1]), "pro_until": row[2]}
+    cursor.execute("INSERT INTO users VALUES (?, 0, 0, NULL)", (user_id,))
     conn.commit()
-    return {"requests": 0, "pro": False}
+    return {"requests": 0, "pro": False, "pro_until": None}
 
-def update_user(user_id, requests=None, pro=None):
+def update_user(user_id, requests=None, pro=None, pro_until=None):
     user = get_user(user_id)
     if requests is not None:
         user["requests"] = requests
     if pro is not None:
         user["pro"] = pro
-    cursor.execute("UPDATE users SET requests=?, pro=? WHERE user_id=?",
-                   (user["requests"], int(user["pro"]), user_id))
+    if pro_until is not None:
+        user["pro_until"] = pro_until
+    cursor.execute("UPDATE users SET requests=?, pro=?, pro_until=? WHERE user_id=?",
+                   (user["requests"], int(user["pro"]), user["pro_until"], user_id))
     conn.commit()
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 history = {}
 
+# --- КЛАВИАТУРЫ ---
 def main_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(KeyboardButton("💬 Вопрос"), KeyboardButton("💎 PRO"))
-    kb.add(KeyboardButton("📊 Статистика"))
+    kb.add(KeyboardButton("❓ Помощь"), KeyboardButton("📊 Статистика"))
     return kb
 
+def pro_keyboard():
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("💎 PRO на месяц — 100 Stars", callback_data="buy_pro_1"))
+    kb.add(InlineKeyboardButton("💎 PRO на полгода — 500 Stars", callback_data="buy_pro_6"))
+    kb.add(InlineKeyboardButton("💎 PRO навсегда — 1000 Stars", callback_data="buy_pro_forever"))
+    return kb
+
+# --- КОМАНДЫ ---
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = message.from_user.id
@@ -61,26 +73,47 @@ def start(message):
 
 @bot.message_handler(commands=['help'])
 def help_cmd(message):
-    bot.reply_to(message, "Команды:\n/start — начало\n/pro — купить PRO\n/help — справка")
+    bot.reply_to(message, "❓ **Помощь:**\n\n"
+                          "• Напиши любой вопрос — я отвечу.\n"
+                          "• 5 запросов бесплатно.\n"
+                          "• Команда /pro — купить PRO.\n"
+                          "• Команда /stats — статистика (для админа).\n\n"
+                          "Если что-то не работает — напиши мне, я помогу!", reply_markup=main_keyboard())
 
+# --- ОПЛАТА ---
 @bot.message_handler(commands=['pro'])
 def pro(message):
-    uid = message.from_user.id
+    bot.reply_to(message, "💎 Выбери тариф PRO:", reply_markup=pro_keyboard())
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("buy_pro_"))
+def buy_pro_callback(call):
+    uid = call.from_user.id
     user = get_user(uid)
     if user["pro"]:
-        bot.reply_to(message, "У тебя уже есть PRO! ❤️")
+        bot.answer_callback_query(call.id, "У тебя уже есть PRO! ❤️")
         return
-    prices = [LabeledPrice(label="PRO-подписка", amount=100)]
+
+    if call.data == "buy_pro_1":
+        amount = 100
+        label = "PRO на месяц"
+    elif call.data == "buy_pro_6":
+        amount = 500
+        label = "PRO на полгода"
+    else:
+        amount = 1000
+        label = "PRO навсегда"
+
+    prices = [LabeledPrice(label=label, amount=amount)]
     bot.send_invoice(
-        chat_id=message.chat.id,
-        title="PRO-подписка Bro AI",
-        description="Безлимитные запросы и длинные ответы и приоритет.",
-        invoice_payload="pro_purchase",
+        chat_id=call.message.chat.id,
+        title=label,description="Безлимитные запросы и длинные ответы.",
+        invoice_payload=call.data,
         provider_token="",
         currency="XTR",
         prices=prices,
         start_parameter="pro"
     )
+    bot.answer_callback_query(call.id)
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def pre_checkout(query: PreCheckoutQuery):
@@ -90,8 +123,9 @@ def pre_checkout(query: PreCheckoutQuery):
 def payment_success(message):
     uid = message.from_user.id
     update_user(uid, pro=True)
-    bot.reply_to(message, "🎉 Спасибо! PRO активирован. Теперь у тебя безлимит!", reply_markup=main_keyboard())
+    bot.reply_to(message, "🎉 Спасибо! PRO активирован. Теперь безлимит!", reply_markup=main_keyboard())
 
+# --- СТАТИСТИКА ---
 @bot.message_handler(commands=['stats'])
 def stats(message):
     if message.from_user.id == ADMIN_ID:
@@ -101,20 +135,26 @@ def stats(message):
         pro_count = cursor.fetchone()[0]
         bot.reply_to(message, f"📊 Пользователей: {total}\n💎 PRO: {pro_count}")
     else:
-        bot.reply_to(message, "Упс, это только для админа.")
+        bot.reply_to(message, "Только для админа.")
 
+# --- КНОПКИ ---
 @bot.message_handler(func=lambda m: m.text == "💬 Вопрос")
 def btn_q(message):
-    bot.reply_to(message, "Задай вопрос!")
+    bot.reply_to(message, "Напиши вопрос!")
 
 @bot.message_handler(func=lambda m: m.text == "💎 PRO")
 def btn_pro(message):
     pro(message)
 
+@bot.message_handler(func=lambda m: m.text == "❓ Помощь")
+def btn_help(message):
+    help_cmd(message)
+
 @bot.message_handler(func=lambda m: m.text == "📊 Статистика")
 def btn_stats(message):
     stats(message)
 
+# --- ЛОГИКА ОТВЕТОВ ---
 @bot.message_handler(func=lambda message: True)
 def ask_ai(message):
     uid = message.from_user.id
@@ -139,7 +179,16 @@ def ask_ai(message):
         history[uid] = history[uid][-10:]
 
     try:
-        response = giga.chat({"messages": history[uid]})
+        system_prompt = (
+            "Ты — дружелюбный и вежливый помощник по имени Bro AI. "
+            "Отвечай на русском языке, тепло и по-дружески, как настоящий друг. "
+            "Можно использовать лёгкий юмор и современный сленг, но без грубости. "
+            "Сегодня 2026 год. Всегда используй актуальную дату — 2026 год, не путай с 2025. "
+            "Если речь о деньгах, используй рубли (₽), а не доллары. "
+            "Если пользователь задаёт математический вопрос, отвечай с формулами, но не используй знак $ (доллара), чтобы не путать."
+        )
+        messages = [{"role": "system", "content": system_prompt}] + history[uid]
+        response = giga.chat({"messages": messages})
         answer = response.choices[0].message.content
         history[uid].append({"role": "assistant", "content": answer})
         new_req = user["requests"] + 1
